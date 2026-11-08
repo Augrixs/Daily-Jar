@@ -172,3 +172,9 @@ html.ads .tabbar{bottom:60px}html.ads .fab{bottom:calc(60px + max(18px,env(safe-
 .handle{font-size:26px;line-height:1;padding:8px 10px;touch-action:none;cursor:grab;color:var(--muted)}
 .rnote{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rt{color:var(--muted);font-size:13px}
+/* solid strip behind the banner so page content never shows around the ad */
+html.ads body::after{content:"";position:fixed;left:0;right:0;bottom:0;height:56px;background:var(--bg);border-top:1px solid var(--line);z-index:40;pointer-events:none}
+html.ads .tabbar{bottom:56px;padding:6px 14px;z-index:41}
+html.ads .tabbar button{padding:9px}
+html.ads body{padding-bottom:56px}
+html.ads #app{padding-bottom:70px}
