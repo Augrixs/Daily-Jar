@@ -741,6 +741,8 @@ document.body.classList.add('veil');
       if (info && info.isConsentFormAvailable && info.status === 'REQUIRED') await A.showConsentForm();
     } catch {}
     await A.initialize({ initializeForTesting: !!cfg.testing });
+    const setH = (px) => document.documentElement.style.setProperty('--adh', Math.ceil(px) + 'px');
+    A.addListener('bannerAdSizeChanged', (info) => { if (info && info.height) setH(info.height + 4); });
     A.addListener('bannerAdLoaded', () => document.documentElement.classList.add('ads'));
     A.addListener('bannerAdFailedToLoad', () => document.documentElement.classList.remove('ads'));
     await A.showBanner({ adId: cfg.banner, adSize: 'BANNER', position: 'BOTTOM_CENTER', margin: 0, isTesting: !!cfg.testing });
