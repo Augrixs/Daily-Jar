@@ -150,7 +150,7 @@ html.ads .tabbar{bottom:60px}html.ads .fab{bottom:calc(60px + max(18px,env(safe-
 .bmain{flex:1;min-width:0;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
 .bmain b{font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bsub{color:var(--muted);font-size:14px}
-.bdel{width:52px;background:var(--panel2);border:1px solid var(--line);border-radius:16px;font-size:20px}
+.bdel{width:48px;background:var(--panel2);border:1px solid var(--line);border-radius:16px;font-size:20px}
 .empty{color:var(--muted);text-align:center;padding:40px 10px}
 .newbook{width:100%}
 .goals{margin-bottom:12px}

@@ -79,6 +79,7 @@ const TX = {
   bookName: ['Book name', 'ชื่อสมุด'],
   create: ['Create', 'สร้าง'],
   delBook: ['Delete book', 'ลบสมุด'],
+  renameBook: ['Rename book', 'เปลี่ยนชื่อสมุด'],
   delBookAsk: ['Delete this book and all its entries? This cannot be undone.', 'ลบสมุดนี้และรายการทั้งหมดในสมุดไหม กู้คืนไม่ได้'],
   noBooks: ['No books yet. Create your first one.', 'ยังไม่มีสมุด สร้างเล่มแรกได้เลย'],
   entriesWord: ['entries', 'รายการ'],
@@ -223,7 +224,7 @@ function render() {
   const T = totals();
   $app.replaceChildren(
     h('div', { class: 'top' },
-      h('div', { class: 'toplft' }, h('button', { class: 'chip backbtn', type: 'button', 'aria-label': 'Back', onclick: closeBook }, '←'), h('h1', {}, b.name)),
+      h('div', { class: 'toplft' }, h('button', { class: 'chip backbtn', type: 'button', 'aria-label': 'Back', onclick: closeBook }, '←'), h('h1', { onclick: () => openNewBook(b) }, b.name)),
       menuChip()),
     h('div', { class: 'balance' }, h('small', {}, t('balance')), bigBalance(T.bal),
       h('div', { class: 'row' }, h('span', { class: 'up' }, `${t('deposited')} ${money(T.dep)}`))),
@@ -245,22 +246,24 @@ function renderBooks() {
     db.books.length
       ? h('div', { class: 'blist' }, db.books.map((b) => h('div', { class: 'bcard' },
         h('button', { class: 'bmain', type: 'button', onclick: () => openBook(b.id) }, h('b', {}, b.name), h('span', { class: 'bsub' }, `${money(bookBal(b))} · ${b.entries.length} ${t('entriesWord')}`)),
+        h('button', { class: 'bdel', type: 'button', 'aria-label': t('renameBook'), onclick: () => openNewBook(b) }, '✎'),
         h('button', { class: 'bdel', type: 'button', 'aria-label': t('delBook'), onclick: () => { if (!confirm(t('delBookAsk'))) return; db.books = db.books.filter((x) => x.id !== b.id); persist(); render(); } }, '🗑'))))
       : h('div', { class: 'empty' }, t('noBooks')),
-    h('button', { class: 'addbtn dep newbook', type: 'button', onclick: openNewBook }, t('newBook')));
+    h('button', { class: 'addbtn dep newbook', type: 'button', onclick: () => openNewBook() }, t('newBook')));
 }
-function openNewBook() {
-  const name = h('input', { class: 'input', type: 'text', maxlength: '40', placeholder: t('bookName'), 'aria-label': t('bookName') });
+function openNewBook(existing) {
+  const name = h('input', { class: 'input', type: 'text', maxlength: '40', value: existing ? existing.name : '', placeholder: t('bookName'), 'aria-label': t('bookName') });
   const err = h('div', { class: 'err' });
   const go = () => {
     const v = name.value.trim();
     if (!v) { err.textContent = t('badName'); return; }
+    if (existing) { existing.name = v; persist(); sh.remove(); render(); toast(t('saved')); return; }
     const b = { id: newId(), name: v, entries: [], goals: [] };
     db.books.push(b); sh.remove(); openBook(b.id);
   };
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-  const sh = sheet([h('h3', {}, t('newBook').replace('+ ', '')), name, err,
-    h('button', { class: 'save dep', type: 'button', onclick: go }, t('create')),
+  const sh = sheet([h('h3', {}, existing ? t('renameBook') : t('newBook').replace('+ ', '')), name, err,
+    h('button', { class: 'save dep', type: 'button', onclick: go }, existing ? t('saveBtn') : t('create')),
     h('button', { class: 'ghost', type: 'button', onclick: () => sh.remove() }, t('cancel'))]);
   setTimeout(() => name.focus(), 50);
 }
