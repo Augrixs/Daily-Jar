@@ -61,6 +61,43 @@ const TX = {
   prev: ['Previous', 'ก่อนหน้า'],
   next: ['Next', 'ถัดไป'],
   weekOf: ['Week', 'สัปดาห์'],
+  pinCreate: ['Create a 4-digit PIN', 'ตั้งรหัส PIN 4 หลัก'],
+  pinCreateSub: ['Keeps others out of your savings. It cannot be recovered, so remember it.', 'กันคนอื่นแอบเปิดดู กู้คืนไม่ได้ จำให้ดีนะ'],
+  pinConfirm: ['Confirm your PIN', 'ยืนยัน PIN อีกครั้ง'],
+  pinMismatch: ['PINs did not match. Try again.', 'PIN ไม่ตรงกัน ลองใหม่'],
+  pinEnter: ['Enter your PIN', 'ใส่ PIN'],
+  pinWrong: ['Wrong PIN', 'PIN ไม่ถูกต้อง'],
+  pinWait: ['Too many tries. Wait 30 seconds.', 'ผิดหลายครั้ง รอ 30 วินาที'],
+  pinForgot: ['Forgot PIN?', 'ลืม PIN?'],
+  pinForgotAsk: ['A PIN cannot be recovered. Erase ALL data on this device and set a new PIN?', 'กู้ PIN ไม่ได้ ลบข้อมูลทั้งหมดในเครื่องนี้แล้วตั้ง PIN ใหม่ไหม'],
+  pinChange: ['Change PIN', 'เปลี่ยน PIN'],
+  pinCurrent: ['Enter your current PIN', 'ใส่ PIN ปัจจุบัน'],
+  pinNew: ['Enter a new PIN', 'ใส่ PIN ใหม่'],
+  pinChanged: ['PIN changed', 'เปลี่ยน PIN แล้ว'],
+  books: ['Saving Book', 'สมุดออมเงิน'],
+  newBook: ['+ New book', '+ สร้างสมุดใหม่'],
+  bookName: ['Book name', 'ชื่อสมุด'],
+  create: ['Create', 'สร้าง'],
+  delBook: ['Delete book', 'ลบสมุด'],
+  delBookAsk: ['Delete this book and all its entries? This cannot be undone.', 'ลบสมุดนี้และรายการทั้งหมดในสมุดไหม กู้คืนไม่ได้'],
+  noBooks: ['No books yet. Create your first one.', 'ยังไม่มีสมุด สร้างเล่มแรกได้เลย'],
+  entriesWord: ['entries', 'รายการ'],
+  badName: ['Type a name', 'ใส่ชื่อก่อน'],
+  goals: ['Goals', 'เป้าหมาย'],
+  addGoal: ['+ Goal', '+ เป้าหมาย'],
+  reorder: ['Reorder', 'เรียงลำดับ'],
+  goalNote: ['Goal (for example: buy snacks)', 'เป้าหมาย (เช่น ซื้อขนม)'],
+  goalTarget: ['Target amount', 'จำนวนเงินเป้าหมาย'],
+  goalOrder: ['Priority (1 = first)', 'ลำดับความสำคัญ (1 = ก่อน)'],
+  newGoal: ['New goal', 'สร้างเป้าหมาย'],
+  editGoal: ['Edit goal', 'แก้ไขเป้าหมาย'],
+  delGoal: ['Delete goal', 'ลบเป้าหมาย'],
+  delGoalAsk: ['Delete this goal?', 'ลบเป้าหมายนี้ไหม'],
+  dragHint: ['Drag ≡ up or down to change the order', 'ลาก ≡ ขึ้นลงเพื่อเรียงลำดับ'],
+  saveBtn: ['Save', 'บันทึก'],
+  defaultBook: ['My Savings', 'เงินออมของฉัน'],
+  resetBookAsk: ['Delete ALL entries in this book? This cannot be undone.', 'ลบรายการทั้งหมดในสมุดนี้ไหม กู้คืนไม่ได้'],
+  resetAllAsk: ['Delete ALL books and entries on this device? This cannot be undone.', 'ลบสมุดและรายการทั้งหมดในเครื่องนี้ไหม กู้คืนไม่ได้'],
 };
 
 /* ---------- button sounds and a little bounce (Web Audio, no sound files) ---------- */
@@ -96,6 +133,7 @@ document.addEventListener('pointerdown', (e) => {
 }, true);
 document.addEventListener('animationend', (e) => { if (e.animationName === 'pop-bounce') e.target.classList.remove('pop'); });
 
+let unlocked = false;
 let db = load();
 let tab = 'book';
 let tablePage = null; // null = last table
@@ -103,12 +141,35 @@ let mode = 'week';
 let anchor = new Date();
 const $app = document.getElementById('app');
 
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function curBook() { return (db && db.books.find((b) => b.id === db.current)) || null; }
+// db.entries always means "the entries of the book that is open"
+function attach(st) {
+  Object.defineProperty(st, 'entries', { configurable: true, enumerable: false, get() { const b = curBook(); return b ? b.entries : []; }, set(v) { const b = curBook(); if (b) b.entries = v; } });
+  return st;
+}
+function okGoal(g) { return g && typeof g.note === 'string' && g.note.trim() && Number.isFinite(g.target) && g.target > 0; }
+function normalize(d) {
+  const st = { lang: d.lang === 'th' ? 'th' : 'en', cur: typeof d.cur === 'string' ? d.cur : '฿', sound: d.sound !== false, pin: null, current: null, books: [] };
+  if (d.pin && typeof d.pin.hash === 'string' && typeof d.pin.salt === 'string') st.pin = { salt: d.pin.salt, hash: d.pin.hash };
+  if (Array.isArray(d.books)) {
+    st.books = d.books.filter((b) => b && typeof b.name === 'string').map((b) => ({
+      id: String(b.id || newId()), name: b.name.slice(0, 40),
+      entries: Array.isArray(b.entries) ? b.entries.filter(okEntry) : [],
+      goals: Array.isArray(b.goals) ? b.goals.filter(okGoal).slice(0, 30).map((g) => ({ id: String(g.id || newId()), note: g.note.slice(0, 60), target: Math.min(g.target, MAX_AMOUNT) })) : [],
+    }));
+  } else if (Array.isArray(d.entries)) {
+    st.books = [{ id: newId(), name: TX.defaultBook[st.lang === 'th' ? 1 : 0], entries: d.entries.filter(okEntry), goals: [] }];
+  }
+  if (st.books.some((b) => b.id === d.current)) st.current = d.current;
+  return attach(st);
+}
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (d && Array.isArray(d.entries)) return { lang: d.lang === 'th' ? 'th' : 'en', cur: typeof d.cur === 'string' ? d.cur : '฿', sound: d.sound !== false, entries: d.entries.filter(okEntry) };
+    if (d && (Array.isArray(d.books) || Array.isArray(d.entries))) return normalize(d);
   } catch { /* fresh start */ }
-  return { lang: 'en', cur: '฿', sound: true, entries: [] };
+  return normalize({});
 }
 function okEntry(e) { return e && (e.type === 'dep' || e.type === 'wd') && Number.isFinite(e.amount) && e.amount > 0 && Number.isFinite(e.ts); }
 function persist() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { toast('Storage is full or blocked'); } }
@@ -154,17 +215,131 @@ function toast(msg) {
 }
 
 /* ---------- frame ---------- */
+const menuChip = () => h('button', { class: 'chip', type: 'button', onclick: openMenu }, '☰ ' + t('menu'));
 function render() {
+  if (!unlocked || !db.pin) return;
+  const b = curBook();
+  if (!b) { db.current = null; renderBooks(); return; }
   const T = totals();
   $app.replaceChildren(
-    h('div', { class: 'top' }, h('h1', {}, t('title')), h('button', { class: 'chip', type: 'button', onclick: openMenu }, '☰ ' + t('menu'))),
+    h('div', { class: 'top' },
+      h('div', { class: 'toplft' }, h('button', { class: 'chip backbtn', type: 'button', 'aria-label': 'Back', onclick: closeBook }, '←'), h('h1', {}, b.name)),
+      menuChip()),
     h('div', { class: 'balance' }, h('small', {}, t('balance')), bigBalance(T.bal),
       h('div', { class: 'row' }, h('span', { class: 'up' }, `${t('deposited')} ${money(T.dep)}`))),
+    goalsView(b),
     tab === 'book' ? bookView() : chartsView(),
     h('nav', { class: 'tabbar' },
       h('button', { type: 'button', class: tab === 'book' ? 'on' : '', onclick: () => { tab = 'book'; render(); } }, '📒 ' + t('book')),
       h('button', { type: 'button', class: tab === 'charts' ? 'on' : '', onclick: () => { tab = 'charts'; render(); } }, '📊 ' + t('charts'))),
   );
+}
+function closeBook() { db.current = null; persist(); tablePage = null; render(); }
+function openBook(id) { db.current = id; tab = 'book'; tablePage = null; persist(); render(); }
+
+/* ---------- books ---------- */
+function bookBal(b) { let v = 0; for (const e of b.entries) v += e.type === 'dep' ? e.amount : -e.amount; return round2(v); }
+function renderBooks() {
+  $app.replaceChildren(
+    h('div', { class: 'top' }, h('h1', {}, '📚 ' + t('books')), menuChip()),
+    db.books.length
+      ? h('div', { class: 'blist' }, db.books.map((b) => h('div', { class: 'bcard' },
+        h('button', { class: 'bmain', type: 'button', onclick: () => openBook(b.id) }, h('b', {}, b.name), h('span', { class: 'bsub' }, `${money(bookBal(b))} · ${b.entries.length} ${t('entriesWord')}`)),
+        h('button', { class: 'bdel', type: 'button', 'aria-label': t('delBook'), onclick: () => { if (!confirm(t('delBookAsk'))) return; db.books = db.books.filter((x) => x.id !== b.id); persist(); render(); } }, '🗑'))))
+      : h('div', { class: 'empty' }, t('noBooks')),
+    h('button', { class: 'addbtn dep newbook', type: 'button', onclick: openNewBook }, t('newBook')));
+}
+function openNewBook() {
+  const name = h('input', { class: 'input', type: 'text', maxlength: '40', placeholder: t('bookName'), 'aria-label': t('bookName') });
+  const err = h('div', { class: 'err' });
+  const go = () => {
+    const v = name.value.trim();
+    if (!v) { err.textContent = t('badName'); return; }
+    const b = { id: newId(), name: v, entries: [], goals: [] };
+    db.books.push(b); sh.remove(); openBook(b.id);
+  };
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  const sh = sheet([h('h3', {}, t('newBook').replace('+ ', '')), name, err,
+    h('button', { class: 'save dep', type: 'button', onclick: go }, t('create')),
+    h('button', { class: 'ghost', type: 'button', onclick: () => sh.remove() }, t('cancel'))]);
+  setTimeout(() => name.focus(), 50);
+}
+
+/* ---------- goals ---------- */
+// The balance fills the goals from the top down: the first goal first, then the next one.
+function goalAlloc(b) {
+  let rest = Math.max(0, bookBal(b));
+  return b.goals.map((g) => { const a = Math.min(g.target, rest); rest = round2(rest - a); return { g, pct: Math.floor((a / g.target) * 100) }; });
+}
+function goalsView(b) {
+  const al = goalAlloc(b);
+  return h('div', { class: 'goals' },
+    h('div', { class: 'ghead' }, h('b', {}, '🎯 ' + t('goals')),
+      h('div', { class: 'gbtns' },
+        al.length > 1 ? h('button', { class: 'chip', type: 'button', onclick: openReorder }, '⇅ ' + t('reorder')) : null,
+        al.length < 30 ? h('button', { class: 'chip', type: 'button', onclick: () => openGoal(null) }, t('addGoal')) : null)),
+    al.map(({ g, pct }) => h('button', { class: 'goal' + (pct >= 100 ? ' done' : ''), type: 'button', onclick: () => openGoal(g) },
+      h('div', { class: 'gnote' }, (pct >= 100 ? '✓ ' : '') + g.note),
+      h('div', { class: 'gbar' }, h('span', { class: 'g0' }, '0'),
+        h('div', { class: 'gtrack' }, h('div', { class: 'gfill', style: `width:${pct}%` }), h('span', { class: 'gpct' }, pct + '%')),
+        h('span', { class: 'gt' }, money(g.target))))));
+}
+function openGoal(g) {
+  const b = curBook();
+  const note = h('input', { class: 'input', type: 'text', maxlength: '60', value: g ? g.note : '', placeholder: t('goalNote'), 'aria-label': t('goalNote') });
+  const target = h('input', { class: 'input num', type: 'text', inputmode: 'decimal', value: g ? String(g.target) : '', placeholder: t('goalTarget'), 'aria-label': t('goalTarget') });
+  const count = b.goals.length + (g ? 0 : 1);
+  const order = h('select', { class: 'input', 'aria-label': t('goalOrder') });
+  for (let i = 1; i <= count; i++) order.append(h('option', { value: String(i) }, String(i)));
+  order.value = String(g ? b.goals.indexOf(g) + 1 : count);
+  const err = h('div', { class: 'err' });
+  const sh = sheet([
+    h('h3', {}, t(g ? 'editGoal' : 'newGoal')),
+    note, target,
+    h('label', { class: 'lbl' }, t('goalOrder')), order, err,
+    h('button', { class: 'save dep', type: 'button', onclick: save }, t('saveBtn')),
+    g ? h('button', { class: 'ghost danger', type: 'button', onclick: () => { if (!confirm(t('delGoalAsk'))) return; b.goals = b.goals.filter((x) => x !== g); persist(); sh.remove(); render(); } }, t('delGoal')) : null,
+    h('button', { class: 'ghost', type: 'button', onclick: () => sh.remove() }, t('cancel')),
+  ]);
+  function save() {
+    const n = round2(parseFloat(String(target.value).replace(/,/g, '')));
+    const text = note.value.trim();
+    if (!text) { err.textContent = t('badName'); return; }
+    if (!Number.isFinite(n) || n <= 0 || n > MAX_AMOUNT) { err.textContent = t('badAmount'); return; }
+    const goal = g || { id: newId() };
+    goal.note = text; goal.target = n;
+    b.goals = b.goals.filter((x) => x !== goal);
+    b.goals.splice(Math.max(0, Math.min(b.goals.length, parseInt(order.value, 10) - 1)), 0, goal);
+    persist(); sh.remove(); render(); toast(t('saved'));
+  }
+  setTimeout(() => note.focus(), 50);
+}
+function openReorder() {
+  const b = curBook();
+  const list = h('div', { class: 'rlist' });
+  b.goals.forEach((g) => list.append(h('div', { class: 'rrow', 'data-id': g.id }, h('span', { class: 'handle' }, '≡'), h('span', { class: 'rnote' }, g.note), h('span', { class: 'rt' }, money(g.target)))));
+  list.addEventListener('pointerdown', (e) => {
+    const hd = e.target.closest && e.target.closest('.handle');
+    if (!hd) return;
+    e.preventDefault();
+    const row = hd.closest('.rrow');
+    const y0 = e.clientY;
+    row.classList.add('drag');
+    try { hd.setPointerCapture(e.pointerId); } catch { /* ok */ }
+    const move = (ev) => { row.style.transform = `translateY(${ev.clientY - y0}px)`; };
+    const up = (ev) => {
+      hd.removeEventListener('pointermove', move); hd.removeEventListener('pointerup', up); hd.removeEventListener('pointercancel', up);
+      row.classList.remove('drag'); row.style.transform = '';
+      const y = ev.clientY;
+      const others = [...list.children].filter((r) => r !== row);
+      const before = others.find((r) => { const q = r.getBoundingClientRect(); return y < q.top + q.height / 2; });
+      if (before) list.insertBefore(row, before); else list.append(row);
+      b.goals = [...list.children].map((r) => b.goals.find((g) => g.id === r.dataset.id));
+      persist(); render();
+    };
+    hd.addEventListener('pointermove', move); hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
+  });
+  const sh = sheet([h('h3', {}, t('reorder')), h('div', { class: 'stamp' }, t('dragHint')), list, h('button', { class: 'save dep', type: 'button', onclick: () => sh.remove() }, t('close'))]);
 }
 
 function bigBalance(bal) {
@@ -430,10 +605,11 @@ function openMenu() {
       h('div', { class: 'seg' }, ['en', 'th'].map((c) => h('button', { type: 'button', class: 'lang' + (db.lang === c ? ' on' : ''), onclick: () => { db.lang = c; persist(); sh.remove(); render(); openMenu(); } }, c === 'en' ? 'English' : 'ไทย')))),
     h('button', { type: 'button', onclick: () => { db.sound = db.sound === false; persist(); sh.remove(); toast(db.sound ? 'Sound on' : 'Sound off'); } }, t('sound') + (db.sound === false ? ' (off)' : ' (on)')),
     h('button', { type: 'button', onclick: () => { const v = prompt(t('currencyAsk'), db.cur); if (v != null && v.trim()) { db.cur = v.trim().slice(0, 4); persist(); sh.remove(); render(); } } }, t('currency')),
-    h('button', { type: 'button', onclick: () => download('daily-jar.csv', 'text/csv', csv()) }, t('csv')),
-    h('button', { type: 'button', onclick: () => download('daily-jar-backup.json', 'application/json', JSON.stringify(db)) }, t('backup')),
+    h('button', { type: 'button', onclick: () => { sh.remove(); changePin(); } }, '🔒 ' + t('pinChange')),
+    curBook() ? h('button', { type: 'button', onclick: () => download('daily-jar.csv', 'text/csv', csv()) }, t('csv')) : null,
+    h('button', { type: 'button', onclick: () => download('daily-jar-backup.json', 'application/json', JSON.stringify({ ...db, pin: null })) }, t('backup')),
     h('button', { type: 'button', onclick: () => restore(sh) }, t('restore')),
-    h('button', { type: 'button', class: 'danger', onclick: () => { if (confirm(t('resetAsk'))) { db.entries = []; tablePage = null; persist(); sh.remove(); render(); } } }, t('reset')),
+    h('button', { type: 'button', class: 'danger', onclick: () => { if (!confirm(t(curBook() ? 'resetBookAsk' : 'resetAllAsk'))) return; if (curBook()) { db.entries = []; curBook().goals = []; } else { db.books = []; } tablePage = null; persist(); sh.remove(); render(); } }, t('reset')),
     h('button', { type: 'button', onclick: () => sh.remove() }, t('close')),
   ]));
 }
@@ -452,8 +628,9 @@ function restore(sh) {
   inp.addEventListener('change', async () => {
     try {
       const d = JSON.parse(await inp.files[0].text());
-      if (!d || !Array.isArray(d.entries)) throw new Error('bad');
-      db = { lang: d.lang === 'th' ? 'th' : 'en', cur: typeof d.cur === 'string' ? d.cur : '฿', sound: d.sound !== false, entries: d.entries.filter(okEntry) };
+      if (!d || !(Array.isArray(d.books) || Array.isArray(d.entries))) throw new Error('bad');
+      const keepPin = db.pin;
+      db = normalize(d); db.pin = keepPin;
       tablePage = null; persist(); sh.remove(); render(); toast(t('restored'));
     } catch { toast(t('badFile')); }
     inp.remove();
@@ -461,7 +638,93 @@ function restore(sh) {
   document.body.append(inp); inp.click();
 }
 
-render();
+
+/* ---------- PIN lock ---------- */
+async function hashPin(pin, salt) {
+  const data = salt + ':' + pin;
+  try {
+    if (window.crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+      return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+    }
+  } catch { /* fall back below */ }
+  let a = 5381, b = 52711;
+  for (let r = 0; r < 5000; r++) for (let i = 0; i < data.length; i++) { a = ((a * 33) ^ data.charCodeAt(i)) >>> 0; b = ((b * 31) + a) >>> 0; }
+  return 'f' + a.toString(16) + b.toString(16);
+}
+async function makePin(pin) { const salt = newId() + newId(); return { salt, hash: await hashPin(pin, salt) }; }
+let fails = 0, blockedUntil = 0;
+async function verifyPin(p) {
+  if (Date.now() < blockedUntil) return t('pinWait');
+  if ((await hashPin(p, db.pin.salt)) === db.pin.hash) { fails = 0; return null; }
+  if (++fails >= 5) { fails = 0; blockedUntil = Date.now() + 30000; return t('pinWait'); }
+  return t('pinWrong');
+}
+// Full-screen keypad. Resolves with the 4 digits, or null if cancelled. `check(pin)` returns an error text, or null if fine.
+function askPin({ title, sub, cancelable, check, forgot }) {
+  return new Promise((resolve) => {
+    let val = '', busy = false;
+    const dots = h('div', { class: 'dots' }, [0, 1, 2, 3].map(() => h('i')));
+    const msg = h('div', { class: 'pinmsg' }, sub || '');
+    const paint = () => [...dots.children].forEach((d, i) => d.classList.toggle('on', i < val.length));
+    const done = (v) => { ov.remove(); resolve(v); };
+    async function submit() {
+      busy = true;
+      const bad = check ? await check(val) : null;
+      busy = false;
+      if (bad) { msg.textContent = bad; msg.classList.add('bad'); dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake'); val = ''; paint(); return; }
+      done(val);
+    }
+    const key = (k) => h('button', { class: 'k', type: 'button', onclick: () => { if (busy || val.length >= 4) return; val += k; msg.classList.remove('bad'); paint(); if (val.length === 4) setTimeout(submit, 120); } }, k);
+    const ov = h('div', { class: 'lock' }, h('div', { class: 'lockin' },
+      h('div', { class: 'lockicon' }, '🔒'), h('h2', {}, title), msg, dots,
+      h('div', { class: 'pad' }, ...'123456789'.split('').map(key),
+        cancelable ? h('button', { class: 'k sm', type: 'button', onclick: () => done(null) }, '←') : h('span'),
+        key('0'),
+        h('button', { class: 'k sm', type: 'button', 'aria-label': 'Delete', onclick: () => { if (busy) return; val = val.slice(0, -1); paint(); } }, '⌫')),
+      forgot ? h('button', { class: 'forgot', type: 'button', onclick: () => { if (!confirm(t('pinForgotAsk'))) return; try { localStorage.removeItem(KEY); } catch { /* ok */ } db = load(); done('__reset__'); } }, t('pinForgot')) : null));
+    document.body.append(ov);
+  });
+}
+async function setupPin() {
+  for (;;) {
+    const a = await askPin({ title: t('pinCreate'), sub: t('pinCreateSub') });
+    const b = await askPin({ title: t('pinConfirm'), cancelable: true, check: async (p) => (p === a ? null : t('pinMismatch')) });
+    if (b !== null) { db.pin = await makePin(a); persist(); return; }
+  }
+}
+async function unlockFlow() {
+  const r = await askPin({ title: t('pinEnter'), check: verifyPin, forgot: true });
+  if (r === '__reset__') await setupPin();
+}
+async function changePin() {
+  const cur = await askPin({ title: t('pinCurrent'), cancelable: true, check: verifyPin });
+  if (cur === null) return;
+  for (;;) {
+    const a = await askPin({ title: t('pinNew'), cancelable: true });
+    if (a === null) return;
+    const b = await askPin({ title: t('pinConfirm'), cancelable: true, check: async (p) => (p === a ? null : t('pinMismatch')) });
+    if (b !== null) { db.pin = await makePin(a); persist(); toast(t('pinChanged')); return; }
+  }
+}
+let hiddenAt = 0, relocking = false;
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) { if (unlocked && db.pin) { hiddenAt = Date.now(); document.body.classList.add('veil'); } return; }
+  if (!hiddenAt || relocking) return;
+  const away = Date.now() - hiddenAt; hiddenAt = 0;
+  if (away < 5000) { document.body.classList.remove('veil'); return; }
+  relocking = true; unlocked = false;
+  await unlockFlow();
+  unlocked = true; document.body.classList.remove('veil'); relocking = false; render();
+});
+document.body.classList.add('veil');
+(async function boot() {
+  if (!db.pin) await setupPin(); else await unlockFlow();
+  unlocked = true;
+  document.body.classList.remove('veil');
+  render();
+})();
+
 // Ads: native Android app only (AdMob banner at the bottom). Settings live in ads-config.json.
 (async function initAds() {
   try {
