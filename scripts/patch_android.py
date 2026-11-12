@@ -55,7 +55,7 @@ run = run if run.isdigit() else '1'
 gr, n = re.subn(r'versionCode\s+\d+', 'versionCode ' + run, gr, count=1)
 if n != 1:
     fail('could not find versionCode in app/build.gradle')
-gr = re.sub(r'versionName\s+"[^"]*"', 'versionName "1.0"', gr, count=1)
+gr = re.sub(r'versionName\s+"[^"]*"', 'versionName "1.1"', gr, count=1)
 open(gr_path, 'w', encoding='utf-8').write(gr)
 # AdMob app id in the manifest (from www/ads-config.json)
 import json

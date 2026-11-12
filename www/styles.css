@@ -180,3 +180,22 @@ html.ads .tabbar button{padding:9px}
 html.ads body{padding-bottom:var(--adh)}
 html.ads #app{padding-bottom:calc(var(--adh) + 90px)}
 html.ads .tablewrap{margin-bottom:24px}
+
+/* line graph */
+.tabbar button{padding:12px 6px;font-size:14px}
+.ranges{display:flex;gap:6px;margin:6px 0 10px}
+.ranges button{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:8px 2px;font-weight:700;font-size:13px}
+.ranges button.on{background:var(--accent);color:#052a28;border-color:var(--accent)}
+.ghead2{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:6px}
+.ghead2 small{display:block;color:var(--muted);font-size:12px}
+.gbal{font-size:26px;overflow-wrap:anywhere}
+.gchg{text-align:right}.gchg b{font-size:15px}
+.gchg.up b,.gs.up b,.gsel.up{color:var(--up)}.gchg.down b,.gs.down b,.gsel.down{color:var(--down)}
+.gsel{font-size:14px;margin-bottom:4px;overflow-wrap:anywhere}
+.gbox{touch-action:none;user-select:none;-webkit-user-select:none;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 2px 0}
+.gsvg{width:100%;height:auto;display:block}
+.gzoom{display:flex;gap:8px;justify-content:center;margin:10px 0}
+.gzoom .chip{min-width:48px;font-size:18px;text-align:center}
+.gstats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.gs{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.gs small{display:block;color:var(--muted);font-size:12px}.gs b{overflow-wrap:anywhere}

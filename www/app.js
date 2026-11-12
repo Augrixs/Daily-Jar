@@ -61,6 +61,12 @@ const TX = {
   prev: ['Previous', 'ก่อนหน้า'],
   next: ['Next', 'ถัดไป'],
   weekOf: ['Week', 'สัปดาห์'],
+  graph: ['Graph', 'กราฟเส้น'],
+  r24h: ['24H', '24 ชม.'], r7d: ['7D', '7 วัน'], r30d: ['30D', '30 วัน'], r90d: ['90D', '90 วัน'], r1y: ['1Y', '1 ปี'], rall: ['All', 'ทั้งหมด'],
+  gHint: ['Drag to move · pinch or +/− to zoom · tap a point for details', 'ลากเพื่อเลื่อน · บีบนิ้วหรือกด +/− เพื่อซูม · แตะจุดเพื่อดูรายละเอียด'],
+  gNone: ['No entries yet. Add a deposit to see the graph.', 'ยังไม่มีรายการ เพิ่มการฝากเพื่อดูกราฟ'],
+  gDep: ['Deposits', 'ฝาก'], gWd: ['Withdrawals', 'ถอน'], gBal: ['Balance', 'ยอดคงเหลือ'], gChange: ['In this view', 'ในช่วงที่เห็น'],
+  version: ['Version', 'เวอร์ชัน'],
   pinCreate: ['Create a 4-digit PIN', 'ตั้งรหัส PIN 4 หลัก'],
   pinCreateSub: ['Keeps others out of your savings. It cannot be recovered, so remember it.', 'กันคนอื่นแอบเปิดดู กู้คืนไม่ได้ จำให้ดีนะ'],
   pinConfirm: ['Confirm your PIN', 'ยืนยัน PIN อีกครั้ง'],
@@ -229,9 +235,10 @@ function render() {
     h('div', { class: 'balance' }, h('small', {}, t('balance')), bigBalance(T.bal),
       h('div', { class: 'row' }, h('span', { class: 'up' }, `${t('deposited')} ${money(T.dep)}`))),
     goalsView(b),
-    tab === 'book' ? bookView() : chartsView(),
+    tab === 'book' ? bookView() : tab === 'graph' ? graphView() : chartsView(),
     h('nav', { class: 'tabbar' },
       h('button', { type: 'button', class: tab === 'book' ? 'on' : '', onclick: () => { tab = 'book'; render(); } }, '📒 ' + t('book')),
+      h('button', { type: 'button', class: tab === 'graph' ? 'on' : '', onclick: () => { tab = 'graph'; G.v1 = 0; render(); } }, '📈 ' + t('graph')),
       h('button', { type: 'button', class: tab === 'charts' ? 'on' : '', onclick: () => { tab = 'charts'; render(); } }, '📊 ' + t('charts'))),
   );
 }
@@ -537,6 +544,212 @@ function canShift(dir) {
   return a.getFullYear() >= first.getFullYear();
 }
 
+/* ---------- line graph (stock style) ---------- */
+const G = { range: '7d', v0: 0, v1: 0, sel: null, ptr: new Map(), drag: null };
+const RANGE_MS = { '24h': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5, '90d': 90 * 864e5, '1y': 365 * 864e5 };
+const MIN_SPAN = 30 * 60e3;
+let gDomain = [0, 0];
+function gSetRange(r) {
+  G.range = r; G.sel = null;
+  const now = Date.now();
+  if (r === 'all') {
+    const es = db.entries;
+    const first = es.length ? Math.min(...es.map((e) => e.ts)) : now - 864e5;
+    gDomain = [Math.min(first - 6 * 36e5, now - 864e5), now];
+  } else gDomain = [now - RANGE_MS[r], now];
+  G.v0 = gDomain[0]; G.v1 = gDomain[1];
+}
+function gClamp() {
+  const [d0, d1] = gDomain; const full = d1 - d0;
+  let span = Math.max(Math.min(G.v1 - G.v0, full), Math.min(MIN_SPAN, full));
+  let a = G.v0;
+  if (a < d0) a = d0;
+  if (a + span > d1) a = d1 - span;
+  G.v0 = a; G.v1 = a + span;
+}
+function gZoom(factor, centerT) {
+  const span = G.v1 - G.v0;
+  const c = centerT == null ? (G.v0 + G.v1) / 2 : centerT;
+  const ratio = (c - G.v0) / span;
+  const ns = Math.max(Math.min(span * factor, gDomain[1] - gDomain[0]), Math.min(MIN_SPAN, gDomain[1] - gDomain[0]));
+  G.v0 = c - ns * ratio; G.v1 = G.v0 + ns; gClamp();
+}
+function balanceSeries() {
+  const es = sorted(); // oldest first
+  let b = 0; const pts = [];
+  for (const e of es) { const before = b; b = round2(b + (e.type === 'dep' ? e.amount : -e.amount)); pts.push({ e, ts: e.ts, before, after: b }); }
+  return pts;
+}
+const pad2 = (n) => String(n).padStart(2, '0');
+const hhmm = (ts) => { const d = new Date(ts); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+const dayLab = (ts) => { const d = new Date(ts); return d.getDate() + ' ' + MON[L()][d.getMonth()]; };
+const midnight = (ts) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+
+// Ruler like a clock: tall tick at the main unit (label), medium at the middle unit, short at the smallest.
+function buildTicks(t0, t1, w) {
+  const span = t1 - t0, ticks = [];
+  const pxPerMin = w / (span / 6e4);
+  const dayPx = pxPerMin * 1440;
+  if (pxPerMin * 60 >= 14) { // intraday: minutes / hours
+    const ladder = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440];
+    const minor = ladder.find((m) => m * pxPerMin >= 6) || 1440;
+    const label = ladder.find((m) => m >= minor && m * pxPerMin >= 52) || 1440;
+    const mids = ladder.filter((m) => m > minor && m < label && label % m === 0);
+    const mid = mids.length ? Math.max(...mids) : 0;
+    let t = midnight(t0);
+    const step = minor * 6e4;
+    t += Math.floor((t0 - t) / step) * step;
+    for (; t <= t1 + step; t += step) {
+      if (t < t0 - step) continue;
+      const mins = Math.round((t - midnight(t)) / 6e4);
+      let level = 1, text = null;
+      if (mins === 0) { level = 3; text = dayLab(t); }
+      else if (mins % label === 0) { level = 3; text = hhmm(t); }
+      else if (mid && mins % mid === 0) level = 2;
+      ticks.push({ t, level, text, day: mins === 0 });
+    }
+  } else if (14 * dayPx >= 34) { // daily
+    const days = [1, 2, 3, 7, 14].find((n) => n * dayPx >= 34) || 14;
+    const minorDay = dayPx >= 6;
+    let d = new Date(t0); d.setHours(0, 0, 0, 0);
+    for (; d.getTime() <= t1 + 864e5; d.setDate(d.getDate() + 1)) {
+      const t = d.getTime(); if (t < t0 - 864e5) continue;
+      const dom = d.getDate();
+      const first = dom === 1;
+      const lab = first || (days === 7 ? d.getDay() === 1 : (dom - 1) % days === 0);
+      if (!lab && !minorDay) continue;
+      ticks.push({ t, level: lab ? 3 : 1, text: lab ? (first ? MON[L()][d.getMonth()] : String(dom)) : null, day: first });
+    }
+  } else { // monthly
+    const every = [1, 2, 3, 6, 12].find((n) => n * 30 * dayPx >= 40) || 12;
+    const d = new Date(t0); d.setDate(1); d.setHours(0, 0, 0, 0);
+    for (; d.getTime() <= t1 + 32 * 864e5; d.setMonth(d.getMonth() + 1)) {
+      const t = d.getTime(); if (t < t0 - 32 * 864e5) continue;
+      const m = d.getMonth(), lab = m % every === 0;
+      ticks.push({ t, level: lab ? 3 : 1, text: lab ? (m === 0 ? String(d.getFullYear()) : MON[L()][m]) : null, day: m === 0 });
+    }
+  }
+  return ticks;
+}
+const niceStep = (range, n) => { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; };
+const compact = (n) => { const a = Math.abs(n); return (n < 0 ? '−' : '') + (a >= 1e9 ? round2(a / 1e9) + 'B' : a >= 1e6 ? round2(a / 1e6) + 'M' : a >= 1e4 ? round2(a / 1e3) + 'k' : String(round2(a))); };
+
+function graphView() {
+  if (!G.v1) gSetRange(G.range);
+  const wrap = h('div', { class: 'graph' });
+  const draw = () => {
+    const pts = balanceSeries();
+    wrap.replaceChildren();
+    const rangeBar = h('div', { class: 'ranges' }, ['24h', '7d', '30d', '90d', '1y', 'all'].map((r) => h('button', { type: 'button', class: G.range === r ? 'on' : '', onclick: () => { gSetRange(r); draw(); } }, t('r' + r))));
+    wrap.append(rangeBar);
+    if (!pts.length) { wrap.append(h('div', { class: 'empty' }, t('gNone'))); return; }
+    // visible numbers
+    const t0 = G.v0, t1 = G.v1;
+    const balAt = (ts) => { let b = 0; for (const p of pts) { if (p.ts <= ts) b = p.after; else break; } return b; };
+    const bStart = balAt(t0), bEnd = balAt(t1);
+    const vis = pts.filter((p) => p.ts >= t0 && p.ts <= t1);
+    let dep = 0, wd = 0; for (const p of vis) { if (p.e.type === 'dep') dep += p.e.amount; else wd += p.e.amount; }
+    dep = round2(dep); wd = round2(wd);
+    const selP = G.sel != null ? pts.find((p) => p.e.id === G.sel) : null;
+    const shown = selP ? selP.after : bEnd;
+    const chg = round2(bEnd - bStart);
+    const pct = bStart > 0 ? ` (${chg >= 0 ? '+' : '−'}${Math.abs(round2((chg / bStart) * 100))}%)` : '';
+    wrap.append(h('div', { class: 'ghead2' },
+      h('div', {}, h('small', {}, selP ? `${fmtShort(new Date(selP.ts))} ${hhmm(selP.ts)}` : t('gBal')), h('b', { class: 'gbal' }, money(shown))),
+      h('div', { class: 'gchg ' + (chg >= 0 ? 'up' : 'down') }, h('small', {}, t('gChange')), h('b', {}, (chg >= 0 ? '▲ +' : '▼ ') + money(Math.abs(chg)) + pct))));
+    if (selP) wrap.append(h('div', { class: 'gsel ' + (selP.e.type === 'dep' ? 'up' : 'down') }, `${selP.e.type === 'dep' ? '+' : '−'}${money(selP.e.amount)}  ${selP.e.note || ''}`));
+
+    // geometry
+    const W = 360, H = 270, ml = 6, mr = 46, mt = 10, plotH = 190, axisY = mt + plotH;
+    const pw = W - ml - mr;
+    const X = (ts) => ml + ((ts - t0) / (t1 - t0)) * pw;
+    const vals = [bStart, bEnd, ...vis.map((p) => p.after), ...vis.map((p) => p.before)];
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi === lo) { const m = Math.max(Math.abs(hi) * 0.1, 1); hi += m; lo -= m; }
+    const step = niceStep(hi - lo, 4);
+    const yMin = Math.floor((lo - (hi - lo) * 0.08) / step) * step, yMax = Math.ceil((hi + (hi - lo) * 0.08) / step) * step;
+    const Y = (v) => mt + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'gsvg', role: 'img', 'aria-label': t('graph') });
+    const defs = svgEl('defs', {}); const grad = svgEl('linearGradient', { id: 'gfillg', x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.append(svgEl('stop', { offset: '0%', 'stop-color': '#2dd4bf', 'stop-opacity': 0.35 }), svgEl('stop', { offset: '100%', 'stop-color': '#2dd4bf', 'stop-opacity': 0 }));
+    defs.append(grad, svgEl('clipPath', { id: 'gclip' }, svgEl('rect', { x: ml, y: 0, width: pw, height: H })));
+    svg.append(defs);
+    for (let v = yMin; v <= yMax + step / 2; v += step) {
+      svg.append(svgEl('line', { x1: ml, x2: W - mr, y1: Y(v), y2: Y(v), stroke: '#ffffff14' }));
+      svg.append(svgEl('text', { x: W - mr + 4, y: Y(v) + 3, fill: '#8ea3b5', 'font-size': 9 }, compact(round2(v))));
+    }
+    // step line
+    let d = `M ${X(t0)} ${Y(bStart)}`; let last = bStart;
+    for (const p of vis) { d += ` L ${X(p.ts)} ${Y(p.before)} L ${X(p.ts)} ${Y(p.after)}`; last = p.after; }
+    d += ` L ${X(t1)} ${Y(last)}`;
+    const g = svgEl('g', { 'clip-path': 'url(#gclip)' });
+    g.append(svgEl('path', { d: d + ` L ${X(t1)} ${Y(Math.max(yMin, Math.min(0, yMax)))} L ${X(t0)} ${Y(Math.max(yMin, Math.min(0, yMax)))} Z`, fill: 'url(#gfillg)' }));
+    g.append(svgEl('path', { d, fill: 'none', stroke: '#2dd4bf', 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    const rr = vis.length > 80 ? 2 : 4;
+    for (const p of vis) g.append(svgEl('circle', { cx: X(p.ts), cy: Y(p.after), r: p.e.id === G.sel ? rr + 2 : rr, fill: p.e.type === 'dep' ? '#2dd4bf' : '#fb7185', stroke: '#0f1720', 'stroke-width': 1.5 }));
+    if (selP && selP.ts >= t0 && selP.ts <= t1) g.append(svgEl('line', { x1: X(selP.ts), x2: X(selP.ts), y1: mt, y2: axisY, stroke: '#eaf2f8', 'stroke-dasharray': '3 3', opacity: 0.6 }));
+    svg.append(g);
+    // ruler
+    svg.append(svgEl('line', { x1: ml, x2: W - mr, y1: axisY + 0.5, y2: axisY + 0.5, stroke: '#ffffff30' }));
+    const TH = { 1: 5, 2: 9, 3: 14 };
+    for (const k of buildTicks(t0, t1, pw)) {
+      const x = X(k.t); if (x < ml - 0.5 || x > W - mr + 0.5) continue;
+      svg.append(svgEl('line', { x1: x, x2: x, y1: axisY, y2: axisY + TH[k.level], stroke: k.day ? '#2dd4bf' : k.level === 3 ? '#cfe0ee' : '#8ea3b5', 'stroke-width': k.level === 3 ? 1.4 : 1 }));
+      if (k.text) svg.append(svgEl('text', { x, y: axisY + 27, 'text-anchor': 'middle', fill: k.day ? '#2dd4bf' : '#c9d8e4', 'font-size': 10, 'font-weight': k.day ? 700 : 400 }, k.text));
+    }
+    // span caption
+    const spanMin = (t1 - t0) / 6e4;
+    const cap = spanMin < 120 ? `${Math.round(spanMin)} min` : spanMin < 2880 ? `${round2(spanMin / 60)} h` : `${round2(spanMin / 1440)} d`;
+    svg.append(svgEl('text', { x: ml + 2, y: H - 4, fill: '#8ea3b5', 'font-size': 9 }, `${dayLab(t0)} ${hhmm(t0)} – ${dayLab(t1)} ${hhmm(t1)} · ${cap}`));
+    // touch layer
+    const box = h('div', { class: 'gbox' }); box.append(svg);
+    const rect = () => svg.getBoundingClientRect();
+    const toT = (clientX) => { const r = rect(); const x = ((clientX - r.left) / r.width) * W; return t0 + ((x - ml) / pw) * (t1 - t0); };
+    const dist = () => { const a = [...G.ptr.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+    box.addEventListener('pointerdown', (e) => {
+      box.setPointerCapture(e.pointerId); G.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      G.drag = { moved: false, sx: e.clientX, v0: G.v0, v1: G.v1, pd: G.ptr.size === 2 ? dist() : 0 };
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!G.ptr.has(e.pointerId) || !G.drag) return;
+      G.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (G.ptr.size === 2) {
+        const a = [...G.ptr.values()]; const nd = dist();
+        if (G.drag.pd) { const c = toT((a[0].x + a[1].x) / 2); G.v0 = G.drag.v0; G.v1 = G.drag.v1; gZoom(G.drag.pd / Math.max(nd, 1), c); G.drag.moved = true; draw(); }
+        return;
+      }
+      const r = rect(); const dx = e.clientX - G.drag.sx;
+      if (Math.abs(dx) > 5) G.drag.moved = true;
+      if (G.drag.moved) { const dt = -(dx / r.width) * (W / pw) * (G.drag.v1 - G.drag.v0); G.v0 = G.drag.v0 + dt; G.v1 = G.drag.v1 + dt; gClamp(); draw(); }
+    });
+    const end = (e) => {
+      const was = G.drag; G.ptr.delete(e.pointerId);
+      if (G.ptr.size === 1 && was) { const p = [...G.ptr.values()][0]; G.drag = { moved: true, sx: p.x, v0: G.v0, v1: G.v1, pd: 0 }; return; }
+      if (G.ptr.size) return;
+      G.drag = null;
+      if (was && !was.moved && e.type === 'pointerup') { // tap: pick the nearest entry
+        const r = rect(); const px = ((e.clientX - r.left) / r.width) * W;
+        let best = null, bd = 28;
+        for (const p of vis) { const dd = Math.abs(X(p.ts) - px); if (dd < bd) { bd = dd; best = p; } }
+        G.sel = best ? best.e.id : null; draw();
+      }
+    };
+    box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    box.addEventListener('wheel', (e) => { e.preventDefault(); gZoom(e.deltaY > 0 ? 1.25 : 0.8, toT(e.clientX)); draw(); }, { passive: false });
+    wrap.append(box);
+    wrap.append(h('div', { class: 'gzoom' },
+      h('button', { type: 'button', class: 'chip', 'aria-label': 'Zoom out', onclick: () => { gZoom(1.6); draw(); } }, '−'),
+      h('button', { type: 'button', class: 'chip', 'aria-label': 'Zoom in', onclick: () => { gZoom(1 / 1.6); draw(); } }, '+'),
+      h('button', { type: 'button', class: 'chip', onclick: () => { gSetRange(G.range); draw(); } }, '⟲')));
+    wrap.append(h('div', { class: 'gstats' },
+      h('div', { class: 'gs up' }, h('small', {}, t('gDep')), h('b', {}, '+' + money(dep))),
+      h('div', { class: 'gs down' }, h('small', {}, t('gWd')), h('b', {}, '−' + money(wd)))));
+    wrap.append(h('div', { class: 'stamp' }, t('gHint')));
+  };
+  draw();
+  return wrap;
+}
+
 function chartsView() {
   const { list, title } = buckets();
   const seg = h('div', { class: 'seg3' }, ['week', 'month', 'year'].map((m) => h('button', { type: 'button', class: mode === m ? 'on' : '', onclick: () => { mode = m; anchor = new Date(); render(); } }, t(m))));
@@ -614,6 +827,7 @@ function openMenu() {
     h('button', { type: 'button', onclick: () => restore(sh) }, t('restore')),
     h('button', { type: 'button', class: 'danger', onclick: () => { if (!confirm(t(curBook() ? 'resetBookAsk' : 'resetAllAsk'))) return; if (curBook()) { db.entries = []; curBook().goals = []; } else { db.books = []; } tablePage = null; persist(); sh.remove(); render(); } }, t('reset')),
     h('button', { type: 'button', onclick: () => sh.remove() }, t('close')),
+    h('div', { class: 'stamp' }, t('version') + ' 1.1'),
   ]));
 }
 function csv() {
