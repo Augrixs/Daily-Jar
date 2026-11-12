@@ -69,6 +69,10 @@ summary::-webkit-details-marker{display:none}
 summary:after{content:"+";color:var(--muted);font-weight:400;font-size:22px;line-height:1}
 details[open] summary:after{content:"–"}
 details p{margin:10px 0 0;color:var(--muted);font-size:15px}
+.gallery{display:flex;gap:18px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x mandatory}
+.gallery figure{margin:0;flex:none;width:210px;scroll-snap-align:start;text-align:center}
+.gallery .phone{width:210px;border-width:6px;border-radius:28px}
+.gallery figcaption{color:var(--muted);font-size:14px;margin-top:10px}
 .cta{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-radius:28px;padding:56px 24px;text-align:center;box-shadow:0 30px 50px -30px #0f766e}
 .cta h2{color:#fff;margin-top:0}.cta p{color:#d3f0eb;max-width:30em;margin:0 auto 24px}
 .cta .stores{justify-content:center}
@@ -94,7 +98,7 @@ html[data-lang="en"] [data-l="en"],html[data-lang="th"] [data-l="th"]{display:re
 <div class="wrap">
 <div class="hero">
   <div>
-    <span class="badge"><i></i><span data-l="en">Free for Android and the web</span><span data-l="th">ฟรี สำหรับ Android และเว็บ</span></span>
+    <span class="badge"><i></i><span data-l="en">Version 1.1 · Free for Android and the web</span><span data-l="th">เวอร์ชัน 1.1 · ฟรี สำหรับ Android และเว็บ</span></span>
     <h1><span data-l="en">Save a little, see it grow.</span><span data-l="th">เก็บทีละนิด เห็นยอดโตทุกวัน</span></h1>
     <p class="lead"><span data-l="en">A simple notebook for your savings. Tap Deposit or Withdraw, type the amount, add a note. Daily Jar writes the date and time and keeps your balance.</span><span data-l="th">สมุดออมเงินแบบง่ายๆ กดฝากหรือถอน พิมพ์จำนวน เขียนโน้ต Daily Jar ลงวันที่เวลาและคำนวณยอดคงเหลือให้</span></p>
     <div class="stores">
@@ -124,6 +128,7 @@ html[data-lang="en"] [data-l="en"],html[data-lang="th"] [data-l="th"]{display:re
     <div class="card"><div class="ic">📊</div><h3><span data-l="en">Charts</span><span data-l="th">กราฟ</span></h3><p><span data-l="en">Bar and pie charts show your best and biggest days and months.</span><span data-l="th">กราฟแท่งและวงกลม ดูวันและเดือนที่ฝากหรือถอนมากสุด</span></p></div>
     <div class="card"><div class="ic">🔒</div><h3><span data-l="en">Private by design</span><span data-l="th">เป็นส่วนตัว</span></h3><p><span data-l="en">No account, no server. Data stays on your device.</span><span data-l="th">ไม่มีบัญชี ไม่มีเซิร์ฟเวอร์ ข้อมูลอยู่ในเครื่องคุณ</span></p></div>
     <div class="card"><div class="ic">💾</div><h3><span data-l="en">Back up anytime</span><span data-l="th">สำรองข้อมูลได้</span></h3><p><span data-l="en">Export a backup or CSV and restore on a new phone.</span><span data-l="th">ส่งออกไฟล์สำรองหรือ CSV แล้วกู้คืนบนเครื่องใหม่</span></p></div>
+    <div class="card"><div class="ic">📈</div><h3><span data-l="en">Stock-style graph</span><span data-l="th">กราฟเส้นแบบหุ้น</span></h3><p><span data-l="en">Balance over 24 hours, 7, 30, 90 days, 1 year or all time. Pinch to zoom down to the minute.</span><span data-l="th">ดูยอดย้อนหลัง 24 ชม. 7 30 90 วัน 1 ปี หรือทั้งหมด บีบนิ้วซูมได้ถึงระดับนาที</span></p></div>
     <div class="card"><div class="ic">🔢</div><h3><span data-l="en">PIN lock</span><span data-l="th">ล็อกด้วย PIN</span></h3><p><span data-l="en">Set a 4-digit PIN so nobody can peek. Change it anytime in the menu.</span><span data-l="th">ตั้ง PIN 4 หลักกันคนแอบดู เปลี่ยนได้ในเมนู</span></p></div>
     <div class="card"><div class="ic">🎯</div><h3><span data-l="en">Goals with progress bars</span><span data-l="th">เป้าหมายพร้อมหลอดความคืบหน้า</span></h3><p><span data-l="en">Save for snacks or a gadget. Set several goals and drag to choose which comes first.</span><span data-l="th">ออมเพื่อซื้อขนมหรือของที่อยากได้ ตั้งได้หลายเป้าหมาย ลากเรียงว่าอันไหนก่อน</span></p></div>
     <div class="card"><div class="ic">📚</div><h3><span data-l="en">Many saving books</span><span data-l="th">หลายสมุดออมเงิน</span></h3><p><span data-l="en">Create a book for each purpose. The app reopens right where you left off.</span><span data-l="th">สร้างสมุดแยกตามจุดประสงค์ เปิดแอปมาอยู่สมุดเดิมที่ค้างไว้</span></p></div>
@@ -131,15 +136,27 @@ html[data-lang="en"] [data-l="en"],html[data-lang="th"] [data-l="th"]{display:re
 </div></section>
 
 <section class="alt"><div class="wrap split">
-  <div class="phone" style="justify-self:center"><img src="shot-charts.png" alt="Daily Jar charts"></div>
+  <div class="phone" style="justify-self:center"><img src="shot-graph.png" alt="Daily Jar line graph with a clock-style time ruler"></div>
   <div>
-    <div class="eyebrow"><span data-l="en">Charts</span><span data-l="th">กราฟ</span></div>
-    <h2><span data-l="en">See where your money goes</span><span data-l="th">ดูว่าเงินไปไหนบ้าง</span></h2>
+    <div class="eyebrow"><span data-l="en">New in 1.1</span><span data-l="th">ใหม่ใน 1.1</span></div>
+    <h2><span data-l="en">A graph that works like a stock chart</span><span data-l="th">กราฟที่ใช้งานเหมือนกราฟหุ้น</span></h2>
     <ul>
-      <li><span data-l="en">Week, month and year views</span><span data-l="th">ดูได้ทั้งสัปดาห์ เดือน และปี</span></li>
-      <li><span data-l="en">Bars for each day or month, plus a pie of deposits vs withdrawals</span><span data-l="th">แท่งรายวันหรือรายเดือน และวงกลมเทียบฝากกับถอน</span></li>
-      <li><span data-l="en">Years always shown in CE, in both languages</span><span data-l="th">ปีแสดงเป็น ค.ศ. ทั้งสองภาษา</span></li>
+      <li><span data-l="en">Pick 24H, 7D, 30D, 90D, 1Y or All, with deposits in green and withdrawals in red</span><span data-l="th">เลือก 24 ชม. 7 30 90 วัน 1 ปี หรือทั้งหมด ฝากสีเขียว ถอนสีแดง</span></li>
+      <li><span data-l="en">Zoom in to see minutes. A clock-style ruler shows the hour, 10-minute and minute marks, and the date at midnight</span><span data-l="th">ซูมใกล้ถึงระดับนาที มีแถบเวลาแบบนาฬิกา และขึ้นวันที่เมื่อข้ามเที่ยงคืน</span></li>
+      <li><span data-l="en">Zoom out and the hours disappear, leaving days, then months</span><span data-l="th">ซูมออก เลขชั่วโมงหายไป เหลือเป็นวัน แล้วเป็นเดือน</span></li>
     </ul>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow"><span data-l="en">Screenshots</span><span data-l="th">ภาพตัวอย่าง</span></div>
+  <h2><span data-l="en">A look inside</span><span data-l="th">ดูหน้าตาแอป</span></h2>
+  <div class="gallery">
+    <figure><div class="phone"><img src="shot-pin.png" alt="PIN lock"></div><figcaption><span data-l="en">PIN lock</span><span data-l="th">ล็อกด้วย PIN</span></figcaption></figure>
+    <figure><div class="phone"><img src="shot-books.png" alt="Saving books"></div><figcaption><span data-l="en">Saving books</span><span data-l="th">สมุดออมเงิน</span></figcaption></figure>
+    <figure><div class="phone"><img src="shot-notebook.png" alt="Notebook with goals"></div><figcaption><span data-l="en">Notebook and goals</span><span data-l="th">สมุดและเป้าหมาย</span></figcaption></figure>
+    <figure><div class="phone"><img src="shot-add.png" alt="Add a deposit"></div><figcaption><span data-l="en">Add a deposit</span><span data-l="th">เพิ่มการฝาก</span></figcaption></figure>
+    <figure><div class="phone"><img src="shot-charts.png" alt="Bar and pie charts"></div><figcaption><span data-l="en">Bar and pie charts</span><span data-l="th">กราฟแท่งและวงกลม</span></figcaption></figure>
   </div>
 </div></section>
 
