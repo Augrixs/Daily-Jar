@@ -10,5 +10,5 @@ Daily Jar is not a bank and does not hold or move real money. It only records nu
 
 ## Play Store checklist
 - Package name: `com.augrixs.dailyjar` (permanent once published)
-- Privacy policy: https://augrixs.github.io/Daily-Jar/privacy.html (enable Pages: Settings > Pages > Source: GitHub Actions)
+- Privacy policy: https://dailyjar.augrixs.workers.dev/privacy.html (enable Pages: Settings > Pages > Source: GitHub Actions)
 - Release build: Actions > "Release AAB (Play Store)" > Run workflow (needs secret `KEYSTORE_PASSWORD`, 12+ characters)
